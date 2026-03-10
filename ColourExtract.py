@@ -242,12 +242,8 @@ def extract_all_sheets(sheets_data):
                     continue  # column has no dataPoint header
 
                 colour = classify_fill(cell.get("bg"))
-                if colour == "orange":
-                    continue  # explicitly excluded
-                if colour is None:
-                    if not cell.get("bold"):
-                        continue  # not marked at all
-                    colour = "bold"  # bold-only: include but no fill in output
+                if colour != "red" and colour != "yellow":
+                    continue  # only red and yellow cells are processed
 
                 entries.append({
                     "title": title,
@@ -275,26 +271,34 @@ def write_xlsx(entries, datapoints, path):
     YELLOW_FILL = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")
     HEADER_FONT = Font(bold=True)
 
+    # Merge entries that share the same title into one row, preserving first-seen order
+    merged = {}       # title -> {datapoint -> {value, colour}}
+    title_order = []  # keeps insertion order
+    for entry in entries:
+        t = entry["title"]
+        if t not in merged:
+            merged[t] = {}
+            title_order.append(t)
+        merged[t][entry["datapoint"]] = {"value": entry["value"], "colour": entry["colour"]}
+
     wb = Workbook()
     ws = wb.active
     ws.title = "Results"
 
-    # Header row: Title | dp1 | dp2 | ...
     headers = ["Title"] + datapoints
-    dp_col = {dp: i + 2 for i, dp in enumerate(datapoints)}  # dataPoint -> column index (1-based)
+    dp_col = {dp: i + 2 for i, dp in enumerate(datapoints)}
 
     for col, h in enumerate(headers, 1):
         ws.cell(1, col, h).font = HEADER_FONT
 
-    # One output row per entry
-    for row_idx, entry in enumerate(entries, 2):
-        ws.cell(row_idx, 1, entry["title"])
-        col = dp_col[entry["datapoint"]]
-        cell = ws.cell(row_idx, col, entry["value"])
-        if entry["colour"] == "red":
-            cell.fill = RED_FILL
-        elif entry["colour"] == "yellow":
-            cell.fill = YELLOW_FILL
+    for row_idx, title in enumerate(title_order, 2):
+        ws.cell(row_idx, 1, title)
+        for dp, info in merged[title].items():
+            cell = ws.cell(row_idx, dp_col[dp], info["value"])
+            if info["colour"] == "red":
+                cell.fill = RED_FILL
+            elif info["colour"] == "yellow":
+                cell.fill = YELLOW_FILL
 
     wb.save(path)
 
